@@ -3,10 +3,12 @@ const express = require("express");
 const fetch = require("node-fetch");
 const Event = require("./modal/orderSchema");
 const ProductDetails = require("./modal/productSchema");
+const subsUserData = require("./modal/subsSchema");
 const cron = require("node-cron");
 const moment = require("moment");
 const timezone = require("moment-timezone");
 const { default: mongoose } = require("mongoose");
+const Subscription = require("./modal/subsSchema");
 
 // const { subsData } = require('./service/subscription');
 const app = express();
@@ -31,8 +33,11 @@ const subsData = async (token) => {
           lastName
           name
           status
+          paymentMethod
+        currency
+        paidAmount
           orderedProducts {
-              id
+             id
               productId
               quantity
               recurring
@@ -40,7 +45,9 @@ const subsData = async (token) => {
               status
               title
               metadata
-          }
+            priceExcludingTaxCents
+            priceIncludingTaxCents
+        }
       }
   }`,
     variables: {
@@ -148,7 +155,44 @@ async function updateOrders() {
     console.error("Error updating orders:", error);
   }
 }
-
+const saveDataInProfitMetrics = async (data) => {
+  try {
+    let newObj = {
+      id: data.id,
+      ts: Math.floor(new Date(data.activatedAt).getTime() / 1000),
+      orderEmail: data.email,
+      shippingMethod: "UPS Nextday",
+      currency: data.currency,
+      paymentMethod: data.paymentMethod,
+      priceTotalExVat: data.orderedProducts.reduce((total, item) => total + item.priceExcludingTaxCents, 0)/100,
+      priceTotalInclVat:data.orderedProducts.reduce((total, item) => total + item.priceIncludingTaxCents, 0)/100,
+      products: data.orderedProducts.map((x) => ({
+        sku:x.productId,
+        qty: x.quantity,
+        priceExVat: x.priceExcludingTaxCents / 100,
+      })),
+    };
+    let url = `https://my.profitmetrics.io/l.php?v=3uh&pid=${process.env.PUBLIC_ID}&o=${newObj}`;
+    fetch(url)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Network response was not ok");
+        }
+        return "success";
+      })
+      .then((data) => {
+        // console.log("API Response:", data);
+        // Handle response data as needed
+      })
+      .catch((error) => {
+        console.error("Error fetching data:", error);
+        // Handle errors
+      });
+    // console.log(newObj);
+  } catch (error) {
+    console.log(error);
+  }
+};
 cron.schedule(
   "0 0 * * *",
   () => {
@@ -167,8 +211,13 @@ app.get("/", async (req, res) => {
 app.post("/hook", async (req, res) => {
   try {
     let bodyData = req.body;
-    if (bodyData.order) {
+    console.log(bodyData);
+    if (!Object.keys(req.body).length) {
+      res.status(201).send("Body is empty!");
+    }
+    if (Object.keys(req.body).length && bodyData.order) {
       let orderData = await subsData(bodyData.order.token);
+      saveDataInProfitMetrics(orderData);
       for (let orderedProduct of orderData.orderedProducts) {
         orderedProduct.week = orderedProduct.metadata.month;
       }
@@ -200,14 +249,114 @@ app.post("/cancel", async (req, res) => {
   }
 });
 app.post("/pause", async (req, res) => {
-  const updatedData = req.body.subscription
+  const updatedData = req.body.subscription;
   try {
-    const filter = { id:  updatedData.id};
+    const filter = { id: updatedData.id };
     const update = { $set: { status: updatedData.status } };
     const result = await Event.updateOne(filter, update);
     res.status(201).send("Subscription paused");
   } catch (error) {
     console.log("error", error);
+  }
+});
+
+const userData = async () => {
+  const projectAccessToken = process.env.process_token;
+  // const subscriptionToken = token;
+  const graphql = JSON.stringify({
+    query: `query Subscriptions {
+      subscriptions(last: 30) {
+          totalCount
+          nodes {
+              zipcode
+              status
+              orderedProducts {
+                id
+                productId
+                quantity
+                recurring
+                status
+                title
+            }
+          }
+      }
+  }`,
+  });
+  const requestOptions = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Project-Access-Token": projectAccessToken,
+    },
+    body: graphql,
+  };
+  const response = await fetch(process.env.url, requestOptions);
+  const data = await response.json();
+
+  return data.data.subscriptions.nodes;
+};
+app.post("/subs", async (req, res) => {
+  try {
+    const getUserData = await userData();
+    console.log(getUserData);
+    const cancelledSubscriptions = getUserData.filter(
+      (sub) => sub.status === "CANCELLED"
+    );
+    // await subsUserData.insertMany(cancelledSubscriptions)
+    res.status(200).send(cancelledSubscriptions);
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+async function processProductId(productId) {
+  console.log(`Processing product ID: ${productId}`);
+  // Your logic here
+  const projectAccessToken = process.env.process_token;
+  // const subscriptionToken = token;
+  const graphql = JSON.stringify({
+    query: `mutation DestroyOrderedProduct($id: ID!) {
+      destroyOrderedProduct(input: {id: $id}) {
+          clientMutationId  
+      }
+  }`,
+    variables: {
+      id: productId,
+    },
+  });
+  const requestOptions = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Project-Access-Token": projectAccessToken,
+    },
+    body: graphql,
+  };
+  const response = await fetch(process.env.url, requestOptions);
+  const data = await response.json();
+  console.log(data, "**********************888");
+
+  return response.status;
+}
+app.get("/userData", async (req, res) => {
+  try {
+    const allQueries = [];
+    const cancelledSubscriptions = await Subscription.find(
+      { status: "CANCELLED" },
+      { "orderedProducts.id": 1 }
+    ).lean();
+    cancelledSubscriptions.forEach((sub) => {
+      sub.orderedProducts.forEach((product) => {
+        let updatePromise = processProductId(product.id);
+        allQueries.push(updatePromise);
+      });
+    });
+    // processProductId("12716108")
+    const results = await Promise.all(allQueries);
+    console.log(results, "response of promise");
+    res.send(cancelledSubscriptions).status(200);
+  } catch (error) {
+    console.log(error);
   }
 });
 app.listen(port, () => {
