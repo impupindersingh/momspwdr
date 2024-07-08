@@ -155,7 +155,7 @@ async function updateOrders() {
     console.error("Error updating orders:", error);
   }
 }
-const saveDataInProfitMetrics = async (data) => {
+function saveDataInProfitMetrics(data) {
   try {
     let newObj = {
       id: data.id,
@@ -164,17 +164,27 @@ const saveDataInProfitMetrics = async (data) => {
       shippingMethod: "UPS Nextday",
       currency: data.currency,
       paymentMethod: data.paymentMethod,
-      priceTotalExVat: data.orderedProducts.reduce((total, item) => total + item.priceExcludingTaxCents, 0)/100,
-      priceTotalInclVat:data.orderedProducts.reduce((total, item) => total + item.priceIncludingTaxCents, 0)/100,
+      priceTotalExVat:
+        data.orderedProducts.reduce(
+          (total, item) => total + item.priceExcludingTaxCents,
+          0
+        ) / 100,
+      priceTotalInclVat:
+        data.orderedProducts.reduce(
+          (total, item) => total + item.priceIncludingTaxCents,
+          0
+        ) / 100,
       products: data.orderedProducts.map((x) => ({
-        sku:x.productId,
+        sku: x.productId,
         qty: x.quantity,
         priceExVat: x.priceExcludingTaxCents / 100,
       })),
     };
     let url = `https://my.profitmetrics.io/l.php?v=3uh&pid=${process.env.PUBLIC_ID}&o=${newObj}`;
+    console.log(url,"url logs")
     fetch(url)
       .then((response) => {
+        console.log(response,"response")
         if (!response.ok) {
           throw new Error("Network response was not ok");
         }
@@ -192,7 +202,7 @@ const saveDataInProfitMetrics = async (data) => {
   } catch (error) {
     console.log(error);
   }
-};
+}
 cron.schedule(
   "0 0 * * *",
   () => {
