@@ -180,11 +180,12 @@ function saveDataInProfitMetrics(data) {
         priceExVat: x.priceExcludingTaxCents / 100,
       })),
     };
-    let url = `https://my.profitmetrics.io/l.php?v=3uh&pid=${process.env.PUBLIC_ID}&o=${newObj}`;
-    console.log(url,"url logs")
+    console.log(JSON.stringify(newObj),"object for the profitmetrics object");
+    let url = `https://my.profitmetrics.io/l.php?v=3uh&pid=${process.env.PUBLIC_ID}&o=${JSON.stringify(newObj)}`;
+    // console.log(url,"url logs")
     fetch(url)
       .then((response) => {
-        console.log(response,"response")
+        // console.log(response,"response")
         if (!response.ok) {
           throw new Error("Network response was not ok");
         }
@@ -228,18 +229,18 @@ app.post("/hook", async (req, res) => {
     if (Object.keys(req.body).length && bodyData.order) {
       let orderData = await subsData(bodyData.order.token);
       saveDataInProfitMetrics(orderData);
-      for (let orderedProduct of orderData.orderedProducts) {
-        orderedProduct.week = orderedProduct.metadata.month;
-      }
-      if (orderData) {
-        orderData.token = bodyData.order.token;
-        orderData.shipDate = bodyData.order.shipment_date;
-        orderData.next_delivery = moment(bodyData.order.shipment_date)
-          .add(1, "M")
-          .format("YYYY-MM-DD");
-      }
-      const event = new Event(orderData);
-      await event.save();
+      // for (let orderedProduct of orderData.orderedProducts) {
+      //   orderedProduct.week = orderedProduct.metadata.month;
+      // }
+      // if (orderData) {
+      //   orderData.token = bodyData.order.token;
+      //   orderData.shipDate = bodyData.order.shipment_date;
+      //   orderData.next_delivery = moment(bodyData.order.shipment_date)
+      //     .add(1, "M")
+      //     .format("YYYY-MM-DD");
+      // }
+      // const event = new Event(orderData);
+      // await event.save();
       res.status(201).send("Order saved successfully!");
     }
   } catch (error) {
