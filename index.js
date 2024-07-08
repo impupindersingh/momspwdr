@@ -182,10 +182,17 @@ function saveDataInProfitMetrics(data) {
     };
     console.log(JSON.stringify(newObj),"object for the profitmetrics object");
     let url = `https://my.profitmetrics.io/l.php?v=3uh&pid=${process.env.PUBLIC_ID}&o=${JSON.stringify(newObj)}`;
+<<<<<<< HEAD
     // console.log(url,"url logs")
     fetch(url)
       .then((response) => {
         // console.log(response,"response")
+=======
+    console.log(url,"url logs")
+    fetch(url)
+      .then((response) => {
+        console.log(response,"response")
+>>>>>>> 88828e4 (Integrated subscription collection)
         if (!response.ok) {
           throw new Error("Network response was not ok");
         }
