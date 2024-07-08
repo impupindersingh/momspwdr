@@ -181,7 +181,7 @@ const saveDataInProfitMetrics = async (data) => {
         return "success";
       })
       .then((data) => {
-        // console.log("API Response:", data);
+        console.log("API Response:", data);
         // Handle response data as needed
       })
       .catch((error) => {
